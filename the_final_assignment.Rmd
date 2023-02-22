@@ -1,0 +1,525 @@
+---
+title: "THE FINAL ASSIGNMENT"
+output:
+  word_document: default
+  pdf_document: default
+---
+                                  assignment_8- Edoardo Frigerio
+
+```{r echo=FALSE,warning=FALSE, message=FALSE}
+library(readxl)
+library(leaps)
+library(car)
+library(faraway)
+
+```
+## THE GOAL
+
+The goal of this research is to understand which variable have the most effect on movies revenue. In order to do this I have use a  database where there are the movies from 2006 stored in the IMDb. I have select only the movies of the genre adventure,comedy and drama that are the most common one.   
+```{r echo=FALSE}
+movies <- read_excel("C:/Users/edo_1/Desktop/Applied linear model/final/movies.xlsx",range = "b1:h246")
+```
+
+```{r }
+head(movies)
+```
+
+```{r echo=FALSE}
+movies$genre<- factor(movies$genre)
+movies$votes<- (movies$votes/1000)
+movies$year <- (movies$year-2005)
+```
+The variables, that I have chosen to explain the revenue of the movies, are: runtime in minutes, votes that are the number
+of the people that on IMDb website have rate the movie, year of production of the movie, score of the movie that is a weighted average of the people rate on the IMDb website, metascore is the movie's rating from the film criticism and the genre as I  explain before only three: adventure,drama,and comedy.
+
+## THE DATA
+
+As you can see from the scatter plot below it doesn't seem that exist a collinearity issue but I refer this analysis to later in this assignment.
+```{r }
+plot(movies[-c(2,7)])
+
+```
+The analysis of the correlation exclude that could exist a correlation among the covariates and the response variable.
+A light correlation could be between "rating" and "votes" and between "metascore" and "rating", in the last case it could be because the two variable express the same thing but one, the rating, is the people score while metascore is the score of  pundits. If the two are correlated it means one of this two things: the people are good as the pundit to rate movies or the pundit opinion isn't different from the normal people so isn't pundit of movies.
+```{r echo= FALSE }
+x <- movies[,-c(7)]
+```
+
+```{r }
+round(cor(x),4)
+```
+## THE LINEAR REGRESSION MODEL 
+The multiple linear regression model with all the predictors is:
+revenue = β0+β1*year+β2*rating+β3*runtime+β4*votes+β5*metascore+β6*genre
+
+```{r echo= FALSE}
+ols1 <- lm(revenue ~ ., data=movies)
+ 
+```
+The summary output is:
+```{r }
+summary(ols1)
+```
+As you can see from the summary out put there are some variable the are not so significant in order to explain the response. So it is better to perform a best subset selection to explore all the possible models and find out the best to explain the variability of the response.
+```{r }
+ols2<- regsubsets(revenue ~ .,data =movies,nvmax=11)
+
+```
+The summary output is:
+```{r }
+ summary(ols2)
+```
+As you can see from the out put of the best subset selection the best one predictor model is the regression with only the votes variable, but to find out which is the best model there are 4 criteria: BIC, adjusted R2, Mallow’s Cp, Cross-validation error(LOOCV)
+```{r echo= FALSE}
+summ <- summary(ols2)
+# BIC
+plot(summ$bic, type="b", pch=19,
+     xlab="Number of predictors", ylab="", main=" BIC")
+abline (v=which.min(summ$bic),col = 2, lty=2)
+
+
+```
+
+```{r echo= FALSE}
+# Cp
+plot(summ$cp, type="b", pch=19,
+     xlab="Number of predictors", ylab="", main="Mallow' Cp")
+abline (v=which.min(summ$cp),col = 2, lty=2)
+
+```
+
+```{r echo= FALSE}
+#R2
+plot(summ$adjr2, type="b", pch=19,
+     xlab="Number of predictors", ylab="", main="Adjusted R^2")
+abline (v=which.max(summ$adjr2),col = 2, lty=2)
+
+```
+
+```{r echo= FALSE}
+#AIC
+n=nrow(movies)
+RSS_best <- as.vector(summ$rss)
+q <- seq(1:7)
+AIC <- rep(NA,7)
+for (i in q){
+  AIC[i] <- n*log(RSS_best[i]/n)+2*q[i]
+}
+```
+
+```{r echo= FALSE }
+plot(AIC, type="b", xlab ="Number of predictors")
+abline (v=which.min(AIC),col = 2, lty=2)
+
+```
+
+```{r echo= FALSE}
+#LOOCV
+w <- 7
+k <- nrow(movies)
+
+folds <- sample (1:k,nrow(movies),replace =TRUE)
+cv.errors <- matrix (NA ,k, w, dimnames =list(NULL , paste (1:w) ))
+for(j in 1:k){
+  best.fit =regsubsets (revenue ~ ., data=movies[folds!=j,],nvmax=7)
+  for(i in 1:w) {
+    mat <- model.matrix(as.formula(best.fit$call[[2]]), movies[folds==j,])
+    coefi <- coef(best.fit ,id = i)
+    xvars <- names(coefi )
+    pred <- mat[,xvars ]%*% coefi
+    cv.errors[j,i] <- mean( (movies$revenue[folds==j] - pred)^2)
+  }
+}
+cv.mean <- colMeans(cv.errors ,na.rm = 1)
+```
+
+```{r echo= FALSE}
+plot(cv.mean ,type="b",pch=19,
+     xlab="Number of predictors",
+     ylab="CV error")
+abline(v=which.min(cv.mean), col=2, lty=2)
+
+```
+As you can see from the graphs two of them BIC and LOOCV consider the model with five predictors the best one  and the other three indices consider the model with six covariates the best one. So  by majority I choose the model with six covariates that is  according to the best subset selection: revenue = β0+β1*year+β2*rating+β3*runtime+β4*votes+β5*genre
+So the variable metascore is excluded, and this should be reasonable because the the more people go to watch the movie the more will be the revenue independently from the movie score of the pundits. The other model that could be the best one exclude the variable metascore as the other one and the variable year so this mean that maybe more and more people go to watch movies or maybe due  to inflation or because the movie are more and more exported worldwide. This require more data than I have.
+From now on i will use this model:
+```{r }
+ols3 <- lm(revenue~.-metascore, data=movies)
+
+```
+
+## COLLINEARITY .
+
+The best way to check the collinerity issue among the predictors of the multiple linear regression model is use the VIF index:
+```{r }
+
+vif(ols3)
+```
+As you can see all the value of the VIF are small so there isn't a collinearity issue.
+
+## DIAGNOSTIC
+
+Diagnostic is used to check the assumption of the linear model.
+First I will check the constant variance assumption for the errors.
+
+```{r echo = FALSE}
+
+plot(fitted(ols3), residuals(ols3),
+     xlab="Fitted values", ylab="Residuals",
+     pch=19, cex=0.8)
+abline(h = 0, col=2)
+rsta3 <- rstandard(ols3)
+
+```
+As you can see from the graph above the variance of the residual isn't constant.
+Then  I will check the normality assumption of the errors with the Shapiro-Wilk test:
+```{r }
+
+shapiro.test(residuals(ols3))
+
+```
+the Shapiro-Wilk test confirms this hypothesis: the errors aren't distributed as a normal function.
+Even graphically using the q-q plot it can be seen the non-normality distribution
+
+```{r echo= FALSE}
+qqnorm (residuals (ols3), ylab="Residuals")
+qqline (residuals (ols3))
+
+```
+Now I will check for large leverage points using halfnorm function.
+
+```{r  echo=FALSE}
+infl <- influence(ols3)
+hat3 <- infl$hat
+halfnorm(hat3, 5, labs = rownames(movies), ylab="Leverages")
+
+```
+As you can see thera are a lot of leverage points.
+
+```{r }
+
+
+```
+Now I will check for outliers. I will use the standardize residual 
+
+
+```{r  echo=FALSE}
+
+plot(fitted(ols3), rsta3,
+     xlab="Fitted values", ylab="standardized Residuals",
+     pch=19, cex=0.8,
+     ylim=c(-6,6))
+abline(h=0, col=2)
+abline(h=2, col=3);abline(h=-2, col=3)
+```
+It is an outlier a point that it is outside the green lines, so it lies in the extreme 10% of the distribution. There are a lot of outliers in this graphs both in the right tail and the left tail  
+And last I wil check for influential points.
+```{r  echo=FALSE}
+
+plot(hat3, rsta3,
+     xlab="Leverage", ylab="standardized residuals",
+     pch = 19, cex = 0.8)
+text(hat3[hat3>0.1], rsta3[hat3>0.1], rownames(movies)[hat3>0.1])
+```
+There are at least four influential points.
+Thanks to the diagnostics I will adjust the model in order to improve it.
+First of all I will use the logarithm of the revenue because from the plot I noticed an exponential pattern
+```{r }
+plot(movies$revenue, ylab="revenue in milion dollars")
+
+```
+
+
+```{r }
+movies2 <- cbind(log_rev = log(movies$revenue),movies[,-c(1)])
+
+```
+Then I will run all the diagnostic analysis that I have done with the previous model
+```{r }
+ols4 <- lm(log_rev ~ .-metascore, data=movies2)                        
+
+```
+
+
+```{r }
+ summary(ols4)
+
+```
+Check the constant variance assumption for the errors:
+```{r echo=FALSE }
+plot(fitted(ols4), residuals(ols4),
+     xlab="Fitted values", ylab="Residuals",
+     pch=19, cex=0.8)
+abline(h = 0, col=2)
+
+```
+Now the graph looks like better and the variance is almost constat
+Check the normality assumption using Shapiro-Wilk test:
+```{r }
+shapiro.test(residuals(ols4))
+
+```
+The Shapiro-Wilk test confirms that the errors are distributed as a normal function.
+Even graphically using the q-q plot it can be seen the normality distribution of the data
+```{r  echo=FALSE}
+
+
+
+qqnorm (residuals (ols4), ylab="Residuals")
+qqline (residuals (ols4))
+
+```
+Check for large leverage points:
+
+
+```{r echo=FALSE }
+infl4 <- influence(ols4)
+hat4 <- infl4$hat
+hat4[which(hat4>=(2*4/nrow(movies)))]
+halfnorm(hat4, 5, labs = rownames(movies), ylab="Leverages")
+
+```
+Check for outliers:
+```{r  echo=FALSE}
+rsta4 <- rstandard(ols4)
+plot(fitted(ols4), rsta4,
+     xlab="Fitted values", ylab="standardized Residuals",
+     pch=19, cex=0.8,
+     ylim=c(-6,6))
+abline(h=0, col=2)
+abline(h=2, col=3);abline(h=-2, col=3)
+
+```
+Check for influential points:
+
+
+```{r  echo=FALSE}
+plot(hat4, rsta4,
+     xlab="Leverage", ylab="standardized residuals",
+     pch = 19, cex = 0.8)
+text(hat4[hat4>0.09], rsta4[hat4>0.09], rownames(movies)[hat4>0.09])
+a <- hat4[hat4>0.09]
+```
+Now the model looks like much better but there are still some issues, so I will impove the databese removing the outliers and the most influencial points. 
+```{r }
+movies3 <- movies2[-c(as.numeric(names(a)),as.numeric(names(rsta4[rsta4 <= -2])), as.numeric(names(rsta4[rsta4 >= 2]))), ]
+
+```
+So the final model will be: log_revenue = β0+β1*year+β2*rating+β3*runtime+β4*votes+β5*genre 
+or equivalently:
+revenue= exp(β0+β1*year+β2*rating+β3*runtime+β4*votes+β5*genre)
+
+```{r }
+ols5 <- lm(log_rev ~ .-metascore, data=movies3)                        
+
+
+```
+
+```{r }
+ summary(ols5)
+
+```
+Now I will perform the diagnostic check to see the improvements of the model
+Check the constant variance assumption for the errors.
+```{r  echo=FALSE}
+plot(fitted(ols5), residuals(ols5),
+     xlab="Fitted values", ylab="Residuals",
+     pch=19, cex=0.8)
+abline(h = 0, col=2)
+
+```
+Check the normality assumption:
+```{r }
+shapiro.test(residuals(ols5))
+
+```
+
+
+```{r  echo=FALSE}
+qqnorm (residuals (ols5), ylab="Residuals")
+qqline (residuals (ols5))
+
+```
+Check for outliers:
+```{r  echo=FALSE}
+rsta5 <- rstandard(ols5)
+plot(fitted(ols5), rsta5,
+     xlab="Fitted values", ylab="standardized Residuals",
+     pch=19, cex=0.8,
+     ylim=c(-6,6))
+abline(h=0, col=2)
+abline(h=2, col=3);abline(h=-2, col=3)
+
+```
+Check for large leverage points:
+```{r  echo=FALSE}
+
+infl5 <- influence(ols5)
+hat5 <- infl5$hat
+hat5[which(hat5>=(2*4/nrow(movies3)))]
+halfnorm(hat5, 5, labs = rownames(movies3), ylab="Leverages")
+
+
+```
+Check for influential points:
+```{r  echo=FALSE}
+
+plot(hat5, rsta5,
+     xlab="Leverage", ylab="standardized residuals",
+     pch = 19, cex = 0.8)
+summ5 <- summary(ols5)
+
+```
+Due to the fact that I have transformed the variable revenue from linear to logarithmic now every one unit increase of any variable is an exponential increase of the type e ^β. The uncertainties of the betas are very low in fact in this model the RSS is only 0.6127, the first model has 59.7, a big improvement.
+As I said before the sigma of the model is:
+```{r }
+summ5$sigma
+
+```
+and the related adjusted R^2 is:
+```{r }
+summ5$adj.r.squared
+
+```
+noticed that in the first model was 0.3988 and in the second one 0.3637, another big improvement.
+So this means that roughly 50% of the variability of the response is explainby the model.
+## ANOVA TEST
+Now I will run a test to test if each of the  individually beta are different from zero.
+
+```{r echo = FALSE }
+#anova betas
+ols <- lm(log_rev~1,data=movies3)
+
+
+```
+
+```{r }
+
+anova(ols5)
+
+```
+As you can see there are to variable that take individually has a p-value grater than 5% so it is legit check if there is or there are better model using ANOVA test.
+Now I will compare different model with different group of regressors to check if there are differences
+```{r }
+
+ols6 <- lm(log_rev ~ . -rating-year-metascore, data= movies3)
+ols7 <- lm(log_rev ~ . -year-metascore, data= movies3)
+ols8 <- lm(log_rev ~ . , data= movies3)
+
+```
+
+```{r }
+anova(ols5,ols6)
+```
+
+```{r }
+anova(ols5,ols7)
+```
+
+```{r }
+anova(ols5,ols8)
+```
+
+
+
+```{r }
+summary(ols7)
+summary(ols5)
+```
+As we have seen in the best selection part the model without the year variable has no differeces with the best model but has you can see the adjuster r^2 is greater (0.4753 with year variable,0.4714 without  year variable) in the current best model so I will keep this model
+
+##NEW OBSERVATION 
+Now I suppose that I have a new observation of my regressor:
+```{r }
+new_ob <- data.frame(year= 4, rating=7,runtime=120, votes=70,metascore=62,genre="Adventure",log_rev=4.55)
+```
+
+
+```{r echo= 0  }
+predict_value <- predict.lm(ols5,new_ob,interval = "confidence")
+
+```
+with the current model the expected and its uncertaintie of the  log revenue will be:
+```{r }
+predict_value 
+
+```
+and so the expected revenue and its uncertaintie
+
+```{r }
+exp(predict_value)
+
+```
+47.63091 million of dollars
+
+## SIMULATED DATA 
+Now I will simulated 20 new data points from the multiple linear model fitted, assuming
+the estimated parameters as the true parameters.
+```{r }
+p<-20
+genre =NULL
+for (s in 1:p){
+  genre[s] <-sample(c("Adventure","Comedy","Drama"),1,replace =1)
+}
+p = 20
+new_data <- data.frame(year= runif(p,1,11), rating=rnorm(p,6.5,1),runtime=rnorm(p,105,10)
+                       , votes=rnorm(p,150,45),metascore=rnorm(p,60,10),
+                       genre =genre ,
+                       log_rev=rnorm(p,4,1))
+
+
+```
+
+
+```{r echo = FALSE }
+
+predict_data <-   predict.lm(ols5,new_data,interval = "confidence")             
+
+```
+
+```{r }
+
+predict_data 
+```
+and the corresponding revenue 
+```{r }
+exp(predict_data )
+
+```
+
+```{r }
+
+
+```
+
+
+```{r }
+
+
+```
+
+```{r }
+
+
+```
+
+```{r }
+
+
+```
+
+```{r }
+
+
+```
+
+
+```{r }
+
+
+```
+
+```{r }
+
+
+```
